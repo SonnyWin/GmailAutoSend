@@ -1,11 +1,15 @@
 GmailAutoSend
 =============
 
-This is an auto send e-mail via Google Sheet which will access Gmail and reading Draft messages' subject to control the time of delivery (i.e.: 5 pm, 1/1,   etc.).
+This is an auto send e-mail via <b>Google Sheets</b> which will access <b>Gmail</b> and reading <b>Draft</b> messages' subject to control the time of delivery (i.e.: 5 pm, 1/1,   etc.).
+
+<b>Google Sheets</b> is awesome and I want to share my script when learning it.
+
+This script is designed to update sheet with only necessary history changes (check before updating). 
 
 Steps to Use
 ============
-1. Make new or use existing Google Sheet
+1. Make new or use existing <b>Google Sheets</b>
 2. Go to <b>Tools</b> | <b>Script editor...</b>
 3. Paste the text from <b>script.txt</b> into the editor
 4. <b>Optional:</b> Modify three functions below at bottom part for the sheet name (default: <i>"Auto Email"</i>), change second parameter into true at <i>runPrepareSheet</i> for <b>mm/dd/yyyy</b> date format.
@@ -18,7 +22,7 @@ Steps to Use
   - <i>loopCheckingDraftMessages</i>
 8. <b>Optional:</b> Add some subject tests to see their resulting delivery date/time and run function below.
   - <i>loopCheckingTestSubjects</i>
-9. Go to <b>Gmail</b> and make a draft message with schedule inside brackets, it will be sent automatically and history will be kept in <b>Sheet</b> and in <b>Trash</b> at <b>Gmail</b><br>
+9. Go to <b>Gmail</b> and make a draft message with schedule inside brackets, it will be sent automatically and history will be kept in the sheet and in <b>Trash</b> at <b>Gmail</b><br>
    <b>Ex.:</b> Subject is <i>"Test draft which will be sent automatically in 5 minutes (+0:5)"</i>
 
 Format
