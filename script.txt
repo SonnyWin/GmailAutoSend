@@ -1,0 +1,1535 @@
+// GmailAutoSend - by Sonny (c) 2014
+
+// Steps to use:
+// 1. Make new or use existing Google Sheet
+// 2. Go to Tools | Script editor...
+// 3. Paste all this script into the editor
+// 4. Optional: Modify three functions below at bottom part for the sheet name (default: "Auto Email"), change second parameter of runPrepareSheet for mm/dd/yyyy date format.
+//    - runPrepareSheet
+//    - loopCheckingDraftMessages
+//    - loopCheckingTestSubjects
+// 5. Run runPrepareSheet function and allow script to access your Gmail accounts
+// 6. Optional: Go to the sheet and change the paramter cells with green background, unhide rows 1-8 for showing advanced parameters
+// 7. At script editor, click the "Current script's trigger" and set up method below with every 30 minutes or even every minute recurrence
+//    - loopCheckingDraftMessages
+// 8. Optional: Add some subject tests to see their resulting delivery date/time and run function below.
+//    - loopCheckingTestSubjects
+// 9. Go to Gmail and make a draft message with schedule inside brackets, it will be sent automatically and history will be kept in Sheet and in Trash at Gmail
+
+// Schedule format in subject is below.
+//   Schedule: ( Date | Date Time | Time Date | Time)
+//   Date: Number [ / Number [ / Number ] ]
+//   Time: [ @ | + ] Number [ : Number [ : Number ] ] [ AM | PM ]
+// Date is in dd/mm/yyyy format by default.
+// Examples:
+//    (1/1 0:0)    Send at midnight at 1st Jan
+//    (24)         Send at 24th of the month
+//    (24/12)      Send at 24th of December
+//    (20:00)      Send at 20:00 of the day  
+//    (+1:30)      Send at 1 hour 30 minutes after the draft creation time
+//    (25@11pm)    Send at 23:00, 25th of the month
+//    [15)         Send at 15th of the month
+//    (1/2)        Send at 1st February
+// Notes:
+//    - When date/time has past and already more than 1 day (except diff. month) or 1 hour behind, then day/month will be added by 1.
+//    - There is a safety check which will not send draft message within 5 minutes even the scheduled date/time is below 5 minutes. This is due to the nature to write subject before body and unfinished draft will still be read by this script. 
+// Make experiment at column N under "Test Subject"
+
+function getParameterDefTime(sheetName)
+{
+  if (arguments.length < 1)
+    sheetName = "Auto Email";
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  var tmParm = sheet.getRange(1, 2).getValue();
+  tmParm = "1/1/2014 " + tmParm;
+  var dt = new Date(tmParm);
+  var dtInt = dt.getHours() * 3600 + dt.getMinutes() * 60 + dt.getSeconds();
+  
+  return dtInt;
+}
+
+function getParameterSheetUpdate(sheetName)
+{
+  if (arguments.length < 1)
+    sheetName = "Auto Email";
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  var tmParm = sheet.getRange(4, 2).getValue();
+  tmParm = "1/1/2014 " + tmParm;
+  var dt = new Date(tmParm);
+  var dtInt = dt.getHours() * 3600 + dt.getMinutes() * 60 + dt.getSeconds();
+  
+  return dtInt;
+}
+
+function getParameterMaxHist(sheetName)
+{
+  if (arguments.length < 1)
+    sheetName = "Auto Email";
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  var mhParm = sheet.getRange(2, 2).getValue();
+  
+  if (mhParm < 2)
+    mhParm = 2;
+
+  return mhParm;
+}
+
+function getParameterActive(sheetName)
+{
+  if (arguments.length < 1)
+    sheetName = "Auto Email";
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  var acParm = sheet.getRange(3, 2).getValue();
+  
+  return acParm == "Yes";
+}
+
+function getParameterSubjectB(sheetName)
+{
+  if (arguments.length < 1)
+    sheetName = "Auto Email";
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  var sbParm = sheet.getRange(5, 2).getValue();
+  
+  return sbParm;
+}
+
+function getParameterSubjectE(sheetName)
+{
+  if (arguments.length < 1)
+    sheetName = "Auto Email";
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  var seParm = sheet.getRange(6, 2).getValue();
+  
+  return seParm;
+}
+
+function getParameterSafetyGap(sheetName)
+{
+  if (arguments.length < 1)
+    sheetName = "Auto Email";
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  var sgParm = sheet.getRange(7, 2).getValue();
+  sgParm = "1/1/2014 " + sgParm;
+  var dt = new Date(sgParm);
+  var dtInt = dt.getHours() * 3600 + dt.getMinutes() * 60 + dt.getSeconds();
+  
+  return dtInt;
+  
+  return sgParm;
+}
+
+function getParameterMMDD(sheetName)
+{
+  if (arguments.length < 1)
+    sheetName = "Auto Email";
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  var mdParm = sheet.getRange(8, 2).getValue();
+  
+  return mdParm == "Yes";
+}
+
+function parseTextDateTimeParm(s, dtNow, defTime, subjectB, subjectE, mmDD)
+{
+  var code = 0;
+  var tokenType = 0;
+  var num;
+
+  if (arguments.length < 2)  
+    dtNow = new Date();
+  
+  if (arguments.length < 3)
+    defTime = 8 * 3600;
+  
+  if (arguments.length < 4)
+    subjectB = '{([';
+  
+  if (arguments.length < 5)
+    subjectE = '})]';
+  
+  if (arguments.length < 6)
+    mmDD = false;
+  
+  var code2 = 0;
+  var prevTokenType = 0;
+  var numbers = {};
+  var numIdx;
+
+//'[n] [[@+]n[a[m]][p[m]][:n[:n]]]'
+//1: +
+//2: @
+//3: :
+//4: n
+//5: am
+//6: pm
+//7: /
+  
+  var checkDate = function() {
+    var dtD = numbers[0] % 100;
+    var dtM = ((numbers[0] / 100) | 0) % 100;
+    var dtY = (numbers[0] / 10000) | 0;
+    
+    if (mmDD)
+    {
+      if (numIdx > 1)
+      {
+        var tmp = dtD;
+        dtD = dtM;
+        dtM = tmp;
+      }
+    }
+    
+    if (numIdx < 2)
+    {
+      // Shall I check end of month with today's date difference? or only assume for same month with near date tolerance.
+      if (dtNow.getDate() > dtD && (dtNow.getDate() - dtD) > 1)
+      {
+        dtM = ((dtNow.getMonth() + 1) % 12) + 1;
+        dtY = dtNow.getFullYear() + (dtM == 1 ? 1 : 0);
+      }
+      else
+      {
+        dtM = dtNow.getMonth() + 1;
+        dtY = dtNow.getFullYear();
+      }
+    }
+    else if (numIdx < 3)
+    {
+      if (((dtNow.getMonth() + 1) > dtM && ((dtNow.getMonth() + 1) - dtM) > 1) ||
+        (
+          (dtNow.getMonth() + 1) == dtM &&
+          dtNow.getDate() > dtD && (dtNow.getDate() - dtD) > 1)
+        )
+        {
+          dtY = dtNow.getFullYear() + 1;
+        }
+      else
+      {
+        dtY = dtNow.getFullYear();
+      }
+    }
+    else if (dtY < 100)
+    {
+      if (dtY < 30)
+        dtY += 2000;
+      else
+        dtY += 1900;
+    }
+    
+    var nd = new Date(dtY, dtM - 1, dtD);
+    
+    if (dtY != nd.getFullYear() || 
+      (dtM - 1) != nd.getMonth() || 
+        dtD != nd.getDate())
+        {
+          code2 = -1;
+        }
+    else
+    {
+      numbers[0] = dtD + dtM * 100 + dtY * 10000;
+    }
+  }
+  
+  var checkTime = function(plus) {
+    if (arguments.length < 1)
+      plus = false;
+    
+    if (numIdx < 10)
+    {
+      code2 = -1;
+    }
+    else
+    {
+      if (!plus && numbers.hasOwnProperty(13))
+      {
+        if (numbers[10] == 12)
+        {
+          if (numbers[13] == 1)
+            numbers[10] -= 12;
+        }
+        else if (numbers[10] > 12)
+        {
+          code2 = -1;
+          return;
+        }
+        else if (numbers[13] == 2)
+        {
+          numbers[10] += 12;
+        }
+      }
+      
+      if (plus)
+      {
+        var time = numbers[10] * 3600;
+        
+        if (numIdx > 10)
+          time += numbers[11] * 60;
+        
+        if (numIdx > 11)
+          time += numbers[12];
+        
+        numbers[1] = -time-1;          
+      }
+      else
+      {
+        if (numbers[10] > 24)
+        {
+          code2 = -1;
+        }
+        else if (numIdx > 10 && numbers[11] > 59)
+        {
+          code2 = -1;
+        }
+        else if (numIdx > 11 && numbers[12] > 59)
+        {
+          code2 = -1;
+        }
+        else 
+        {
+          if (numbers[10] == 24)
+            numbers[10] = 0;
+          
+          var time = numbers[10] * 3600;
+          
+          if (numIdx > 10)
+            time += numbers[11] * 60;
+          
+          if (numIdx > 11)
+            time += numbers[12];
+          
+          numbers[1] = time;          
+        }
+      }
+    }
+  }
+  
+  var recalcDateTime = function() {
+    var newDate = false;
+    if (!numbers.hasOwnProperty(0))
+    {
+      newDate = true;
+      numbers[0] = dtNow.getDate() + ((dtNow.getMonth() + 1) * 100) + (dtNow.getFullYear() * 10000);
+    }
+    
+    if (numbers.hasOwnProperty(1) && numbers[1] < 0)
+    {
+      var time = dtNow.getHours() * 3600 + dtNow.getMinutes() * 60 + dtNow.getSeconds();
+      
+      time += ((-numbers[1]) - 1);
+      
+      if (time >= (24 * 3600))
+      {
+        var addDays = (time / (24 * 3600)) | 0;
+        time %= (24 * 3600);
+        
+        var dt = new Date((numbers[0] / 10000) | 0, (((numbers[0] / 100) | 0) % 100) - 1, numbers[0] % 100);
+        
+        dt.setDate(dt.getDate() + addDays);
+        
+        var newDt = dt.getDate() + (dt.getMonth() + 1) * 100 + dt.getFullYear() * 10000;
+        
+        numbers[0] = newDt;
+      }
+
+      numbers[1] = time;
+    }
+    else
+    {
+      if (numbers.hasOwnProperty(1))
+      {
+        var tmNow = dtNow.getHours() * 3600 + dtNow.getMinutes() * 60 + dtNow.getSeconds();
+        
+        if (newDate && tmNow > numbers[1] && (tmNow - numbers[1]) > (1 * 3600))
+        {
+          var dt = new Date((numbers[0] / 10000) | 0, (((numbers[0] / 100) | 0) % 100) - 1, numbers[0] % 100);
+          
+          dt.setDate(dt.getDate() + 1);
+          
+          var newDt = dt.getDate() + (dt.getMonth() + 1) * 100 + dt.getFullYear() * 10000;
+          
+          numbers[0] = newDt;
+        }
+      }
+      else
+      {
+        numbers[1] = defTime;
+      }
+    }
+
+    var cutStr = s.substr(0, numbers[90]) + s.substr(numbers[91] + 1, 99);
+    
+    numbers[92] = cutStr;
+  }
+  
+  var addToken = function() {
+    if (code2 == -1)
+      return;
+    
+    switch (code2)
+    {
+      case 0:
+        switch (tokenType)
+        {
+          case 1:
+            if (numbers.hasOwnProperty(1))
+            {
+              code2 = -1;
+            }
+            else
+            {
+              code2 = 1;
+              numIdx = 10 - 1;                
+            }
+            
+            break;
+            
+          case 2:
+            if (numbers.hasOwnProperty(1))
+            {
+              code2 = -1;
+            }
+            else
+            {
+              code2 = 2;
+              numIdx = 10 - 1;                
+            }
+            
+            break;
+            
+          case 4:
+            if (numbers.hasOwnProperty(0))
+            {
+              code2 = 2;
+              numIdx = 10;
+              numbers[numIdx] = num;
+            }
+            else if (numbers.hasOwnProperty(1))
+            {
+              code2 = 3;
+              numbers[0] = num;
+              numIdx = 1;
+            }
+            else
+            {
+              code2 = 4;
+              numIdx = 10;
+              numbers[numIdx] = num;
+            }
+            
+            break;
+            
+          case 99:
+            if (numbers.hasOwnProperty(0) || numbers.hasOwnProperty(1))
+              code2 = 99;
+            else
+              code2 = -1;
+            break;
+            
+          default:
+            code2 = -1;
+            
+            break;
+        }
+        
+        break;
+        
+      case 1:
+        switch (tokenType)
+        {
+          case 3:
+            if (prevTokenType == 3)
+            {
+              code2 = -1;
+            }
+            else
+            {
+              if (numIdx >= 12)
+              {
+                code2 = -1;
+              }
+            }
+            
+            break;
+            
+          case 4:
+            if (prevTokenType == 4)
+            {
+              if (numbers.hasOwnProperty(0))
+              {
+                code2 = -1;
+              }
+              else
+              {
+                code2 = 3;
+                checkTime(true);
+                numbers[0] = num;
+                numIdx = 1;
+              }
+            }
+            else
+            {
+              numIdx++;
+              numbers[numIdx] = num;
+            }
+            
+            break;
+                        
+          case 99:
+            if (prevTokenType == 3)
+            {
+              code2 = -1;
+            }
+            else
+            {
+              code2 = 99;
+              
+              checkTime(true);
+            }
+            
+            break;
+            
+          default:
+            code2 = -1;
+            
+            break;
+            
+        }
+        
+        break;
+        
+      case 2:
+        switch (tokenType)
+        {
+          case 3:
+            if (prevTokenType == 3)
+            {
+              code2 = -1;
+            }
+            else
+            {
+              if (numIdx >= 12)
+              {
+                code2 = -1;
+              }
+            }
+            
+            break;
+            
+          case 4:
+            if (prevTokenType == 4)
+            {
+              if (numbers.hasOwnProperty(0))
+              {
+                code2 = -1;
+              }
+              else
+              {
+                code2 = 3;
+                checkTime();
+                numbers[0] = num;
+                numIdx = 1;
+              }
+            }
+            else
+            {
+              numIdx++;
+              numbers[numIdx] = num;
+            }
+            
+            break;
+            
+          case 5:
+            if (prevTokenType == 3)
+            {
+              code2 = -1;
+            }
+            else
+            {
+              numbers[13] = 1;
+              code2 = 0;
+              checkTime();
+            }
+            
+            break;
+            
+          case 6:
+            if (prevTokenType == 3)
+            {
+              code2 = -1;
+            }
+            else
+            {
+              numbers[13] = 2;
+              code2 = 0;
+              checkTime();
+            }
+            
+            break;
+            
+          case 99:
+            if (prevTokenType == 3)
+            {
+              code2 = -1;
+            }
+            else
+            {
+              code2 = 99;
+              
+              checkTime();
+            }
+            
+            break;
+            
+          default:
+            code2 = -1;
+            
+            break;
+        }
+        
+        break;
+        
+      case 3:
+        switch (tokenType)
+        {
+          case 1:
+            if (numbers.hasOwnProperty(1) || prevTokenType == 7)
+            {
+              code2 = -1;
+            }
+            else
+            {
+              code2 = 1;
+              checkDate();
+              numIdx = 10 - 1;                
+            }
+            
+            break;
+            
+          case 2:
+            if (numbers.hasOwnProperty(1) || prevTokenType == 7)
+            {
+              code2 = -1;
+            }
+            else
+            {
+              code2 = 2;
+              checkDate();
+              numIdx = 10 - 1;
+            }
+            
+            break;
+            
+          case 4:
+            if (prevTokenType == 4)
+            {
+              if (numbers.hasOwnProperty(1))
+              {
+                code2 = -1;
+              }
+              else
+              {
+                code2 = 2;
+                checkDate();
+                numIdx = 10;
+                numbers[numIdx] = num;
+              }
+            }
+            else
+            {
+              numIdx++;
+              
+              switch (numIdx)
+              {
+                case 2:
+                  numbers[0] += num * 100;
+                  break;
+                case 3:
+                  numbers[0] += num * 10000;
+                  break;
+              }
+            }
+            
+            break;
+            
+          case 7:
+            if (prevTokenType == 7)
+            {
+              code2 = -1;
+            }
+            else
+            {
+              if (numIdx >= 3)
+              {
+                code2 = -1;
+              }
+            }
+            
+            break;
+            
+          case 99:
+            if (prevTokenType == 7)
+            {
+              code2 = -1;
+            }
+            else
+            {
+              code2 = 99;
+              
+              checkDate();
+            }
+            
+            break;
+            
+          default:
+            code2 = -1;
+            
+            break;
+        }
+        
+        break;
+        
+      case 4:
+        switch (tokenType)
+        {
+          case 1:
+            numbers[0] = numbers[10];
+            numIdx = 1;
+            code2 = 1;
+            checkDate();
+            numIdx = 10 - 1;                
+            
+            break;
+            
+          case 2:
+            numbers[0] = numbers[10];
+            numIdx = 1;
+            code2 = 2;
+            checkDate();
+            numIdx = 10 - 1;
+            
+            break;
+            
+          case 3:
+            code2 = 2;
+            
+            break;
+            
+          case 4:
+            numbers[0] = numbers[10];
+            numIdx = 1;
+            code2 = 2;
+            checkDate();
+            numIdx = 10;
+            numbers[numIdx] = num;
+            
+            break;
+            
+          case 5:
+            numbers[13] = 1;
+            code2 = 0;
+            checkTime();
+            
+            break;
+            
+          case 6:
+            numbers[13] = 2;
+            code2 = 0;
+            checkTime();
+            
+            break;
+            
+          case 7:
+            numbers[0] = numbers[10];
+            numIdx = 1;
+            code2 = 3;
+            
+            break;
+            
+          case 99:
+            numbers[0] = numbers[10];
+            numIdx = 1;
+            code2 = 99;
+            checkDate();
+            
+            break;
+            
+          default:
+            code2 = -1;
+            
+            break;
+        }
+        
+        break;
+    }       
+    
+    prevTokenType = tokenType;
+    tokenType = 0;
+  }
+  
+  for (var j = 0; j < s.length; j++)
+  {
+    switch (code)
+    {
+      case 0:
+        if (subjectB.indexOf(s[j]) > -1)
+        {
+          numbers[90] = j;
+          code = 1;
+        }
+        
+        break;
+        
+      case 1:
+        if (s[j] >= '0' && s[j] <= '9')
+        {
+          num = (s[j] - '0');
+          code = 2;
+        }
+        else if (s[j] == '+')
+        {
+          tokenType = 1;
+        }
+        else if (s[j] == '@')
+        {
+          tokenType = 2;
+        }
+        else if (s[j] == ':')
+        {
+          tokenType = 3;
+        }
+        else if (s[j] == '-' || s[j] == '/')
+        {
+          tokenType = 7;
+        }
+        else if (s[j] == 'a' || s[j] == 'A')
+        {
+          code = 3;
+        }
+        else if (s[j] == 'p' || s[j] == 'P')
+        {
+          code = 4;
+        }
+        else if (subjectE.indexOf(s[j]) > -1)
+        {
+          tokenType = 99;
+          code = 99;
+        }
+        else if (s[j] == ' ')
+        {
+        }
+        else
+        {
+          code = -1;
+        }
+        
+        break;
+        
+      case 2:
+        if (s[j] >= '0' && s[j] <= '9')
+        {
+          num *= 10;
+          num += (s[j] - '0');
+        }
+        else if (s[j] == '+')
+        {
+          tokenType = 4;
+          addToken();
+          tokenType = 1;
+          code = 1;
+        }
+        else if (s[j] == '@')
+        {
+          tokenType = 4;
+          addToken();
+          tokenType = 2;
+          code = 1;
+        }
+        else if (s[j] == ':')
+        {
+          tokenType = 4;
+          addToken();
+          tokenType = 3;
+          code = 1;
+        }
+        else if (s[j] == '-' || s[j] == '/')
+        {
+          tokenType = 4;
+          addToken();
+          tokenType = 7;
+          code = 1;
+        }
+        else if (s[j] == 'a' || s[j] == 'A')
+        {
+          tokenType = 4;
+          addToken();
+          code = 3;
+        }
+        else if (s[j] == 'p' || s[j] == 'P')
+        {
+          tokenType = 4;
+          addToken();
+          code = 4;
+        }
+        else if (s[j] == '}' || s[j] == ')' || s[j] == ']')
+        {
+          tokenType = 4;
+          addToken();
+          tokenType = 99;
+          code = 99;
+        }
+        else if (s[j] == ' ')
+        {
+          tokenType = 4;
+          code = 1;
+        }
+        else
+        {
+          code = -1;
+        }
+        
+        break;
+        
+      case 3:
+        if (s[j] >= '0' && s[j] <= '9')
+        {
+          tokenType = 5;
+          addToken();
+          num = (s[j] - '0');
+          code = 2;
+        }
+        else if (s[j] == 'm' || s[j] == 'M')
+        {
+          tokenType = 5;
+          code = 1;
+        }
+        else if (s[j] == '}' || s[j] == ')' || s[j] == ']')
+        {
+          tokenType = 5;
+          addToken();
+          tokenType = 99;
+          code = 99;
+        }
+        else if (s[j] == ' ')
+        {
+          tokenType = 5;
+          code = 1;
+        }
+        else
+        {
+          code = -1;
+        }
+        
+        break;
+        
+      case 4:
+        if (s[j] >= '0' && s[j] <= '9')
+        {
+          tokenType = 6;
+          addToken();
+          num = (s[j] - '0');
+          code = 2;
+        }
+        else if (s[j] == 'm' || s[j] == 'M')
+        {
+          tokenType = 6;
+          code = 1;
+        }
+        else if (s[j] == '}' || s[j] == ')' || s[j] == ']')
+        {
+          tokenType = 6;
+          addToken();
+          tokenType = 99;
+          code = 99;
+        }
+        else if (s[j] == ' ')
+        {
+          tokenType = 6;
+          code = 1;
+        }
+        else
+        {
+          code = -1;
+        }
+        
+        break;
+        
+    }
+    
+    if (code == -1 || code2 == -1 || code2 == 99)
+    {
+      numbers[91] = j;
+      break;
+    }
+    
+    if (tokenType != 0)
+      addToken();
+    
+    if (code == -1 || code2 == -1 || code2 == 99)
+    {
+      numbers[91] = j;
+      break;
+    }
+    
+  }
+  
+  if (code == 99 && code2 == 99)
+  {
+    recalcDateTime();
+    return numbers;
+  }
+  
+  return null;
+}
+
+function getTextFromNumbers(numbers, checkSent, safetyGap, mmDD)
+{
+  if (arguments.length < 2)
+    checkSent = true;
+  
+  if (arguments.length < 3)
+    safetyGap = 0;
+  
+  if (arguments.length < 4)
+    mmDD = false;
+  
+  var res = "";
+  if (numbers == null)
+  {
+    res = "-";
+  }
+  else
+  {
+    if (numbers.hasOwnProperty(0))
+    {
+      var dt = new Date((numbers[0] / 10000) | 0, (((numbers[0] / 100) | 0) % 100) - 1, numbers[0] % 100);
+//      res += "Date: ";
+      if (mmDD)
+      {
+        res += (dt.getMonth() + 1);
+        res += "/";
+        res += dt.getDate();
+      }
+      else
+      {
+        res += dt.getDate();
+        res += "/";
+        res += (dt.getMonth() + 1);
+      }
+      res += "/";
+      res += dt.getFullYear();
+    }
+    
+    if (numbers.hasOwnProperty(1))
+    {
+      res += " ";
+//      res += " Time: ";
+      res += (numbers[1] / 3600) | 0;
+      res += ":";
+      var m = ((numbers[1] / 60) | 0) % 60;
+      if (m < 10)
+        res += "0";
+      res += m;
+      res += ":";
+      var s = numbers[1] % 60
+      if (s < 10)
+        res += "0";
+      res += s;
+    }
+    
+    if (checkSent && isGoingToBeSent(numbers, safetyGap))
+      res += " (sent)";
+  }
+  
+  return res;
+}
+
+function getTextFromDate(dt, checkSent, safetyGap, mmDD)
+{
+  if (arguments.length < 2)
+    checkSent = true;
+ 
+  if (arguments.length < 3)
+    safetyGap = 0;
+
+  if (arguments.length < 4)
+    mmDD = false;
+    
+  var res = "";
+  if (isNaN(dt.getTime()))
+  {
+    res = "-";
+  }
+  else
+  {
+    if (mmDD)
+    {
+      res += (dt.getMonth() + 1);
+      res += "/";
+      res += dt.getDate();
+    }
+    else
+    {
+      res += dt.getDate();
+      res += "/";
+      res += (dt.getMonth() + 1);
+    }
+    res += "/";
+    res += dt.getFullYear();
+
+    res += " ";
+    res += dt.getHours();
+    res += ":";
+    if (dt.getMinutes())
+      res += "0";
+    res += dt.getMinutes();
+    res += ":";
+    if (dt.getSeconds())
+      res += "0";
+    res += dt.getSeconds();
+    
+    if (checkSent && isGoingToBeSentDate(dt, safetyGap))
+      res += " (sent)";
+  }
+  
+  return res;
+}
+
+function isGoingToBeSent(numbers, safetyGap)
+{
+  if (numbers == null)
+  {
+    return false;
+  }
+
+  if (arguments.length < 2)
+    safetyGap = 0;
+
+  var dt = new Date((numbers[0] / 10000) | 0, (((numbers[0] / 100) | 0) % 100) - 1, numbers[0] % 100, (numbers[1] / 3600) | 0, ((numbers[1] / 60) | 0) % 60, numbers[1] % 60);
+
+  return isGoingToBeSentDate(dt, safetyGap);
+}
+
+function isGoingToBeSentDate(dt, safetyGap)
+{
+  if (dt == null)
+  {
+    return false;
+  }
+
+  if (arguments.length < 2)
+    safetyGap = 0;
+
+  var dtNow = new Date();
+  
+  dtNow.setSeconds(dtNow.getSeconds() - safetyGap);
+  
+  var res = dtNow > dt;
+  
+  return res;
+}
+
+function searchHistLocation(sheet, maxHist)
+{
+  if (maxHist < 2)
+    maxHist = 2;
+  
+  var row = 11;
+  var y = 0;
+  
+  while (y < maxHist)
+  {
+    var test = sheet.getRange(row + y, 7).getValue();
+    
+    if (test == "")
+    {
+      break;
+    }
+    
+    y++;
+  }
+  
+  var res = {};
+  
+  if (y < maxHist)
+  {
+    res[0] = y;
+    res[1] = ((y + 1) % maxHist);
+  }
+  else
+  {
+    res[0] = 0;
+    res[1] = 1;
+  }    
+  
+  return res;
+}
+
+function checkDraftMessages(sheetName)
+{
+  if (arguments.length < 1)
+    sheetName = "Auto Email";
+
+  var row = 11;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  
+  var curUpdate = new Date();
+  var lastUpdate = new Date(sheet.getRange(1, 5).getValue());
+  var diff = curUpdate.getTime() - lastUpdate.getTime();
+  var sheetUpdateTime = getParameterSheetUpdate(sheetName);
+  var subjectB = getParameterSubjectB(sheetName);
+  var subjectE = getParameterSubjectE(sheetName);
+  var safetyGap = getParameterSafetyGap(sheetName);
+  var mmDD = getParameterMMDD(sheetName);
+  var updateLastUpdate = false;
+  
+  if (diff > sheetUpdateTime * 1000)
+  {
+    updateLastUpdate = true;
+  }
+  
+  var active = getParameterActive(sheetName);
+  
+  if (!active)
+    return;
+  
+  var defTime = getParameterDefTime(sheetName);
+  var maxHist = getParameterMaxHist(sheetName);
+  var gm = GmailApp.getDraftMessages();
+  var noOffset = 0;
+
+  for (var i = 0; i < gm.length; i++)
+  {
+    var s = gm[i].getSubject();
+    var dt = gm[i].getDate();
+    var prevDt = sheet.getRange(row + i, 1).getValue();
+    var newDt = "'" + getTextFromDate(dt, false, safetyGap, mmDD);
+    
+    if (prevDt != newDt)
+    {
+      updateLastUpdate = true;
+      sheet.getRange(row + i, 1).setValue(newDt);
+    }
+    
+    var prevS = sheet.getRange(row + i, 2).getValue();
+    
+    if (prevS != s)
+    {
+      updateLastUpdate = true;
+      sheet.getRange(row + i, 2).setValue(s);
+    }
+    
+    var toV = gm[i].getTo();    
+    var rec = toV;
+    var ccV = gm[i].getCc();
+    if (ccV.length > 0)
+      rec += " cc: " + ccV;
+    var bccV = gm[i].getBcc();
+    if (bccV.length > 0)
+      rec += " bcc: " + bccV;
+  
+    var prevRec = sheet.getRange(row + i, 4).getValue();
+    
+    if (prevRec != rec)
+    {
+      updateLastUpdate = true;
+      sheet.getRange(row + i, 4).setValue(rec);
+    }
+//    sheet.getRange(row + i, 5).setValue("...");
+
+    var numbers = parseTextDateTimeParm(s, dt, defTime, subjectB, subjectE, mmDD);
+
+    var prevN = sheet.getRange(row + i, 3).getValue();
+    var prevT = sheet.getRange(row + i, 5).getValue();
+    
+    if (numbers == null)
+    {
+      if (prevT != "-")  
+      {
+        updateLastUpdate = true;
+        sheet.getRange(row + i, 5).setValue("-");
+      }
+    }
+    else
+    {
+      if (prevN != numbers[92])
+      {
+        updateLastUpdate = true;
+        sheet.getRange(row + i, 3).setValue(numbers[92]);
+      }
+      
+      var newT = "'" + getTextFromNumbers(numbers, true, safetyGap, mmDD);
+      
+      if (prevT != newT)
+      {
+        updateLastUpdate = true;
+        sheet.getRange(row + i, 5).setValue(newT);
+      }
+      
+      if (isGoingToBeSent(numbers, safetyGap))
+      {
+        updateLastUpdate = true;
+        noOffset++;
+        
+        var hists = searchHistLocation(sheet, maxHist);
+        
+        sheet.getRange(row + hists[1], 7).setValue("");
+        sheet.getRange(row + hists[0], 7).setValue(noOffset);
+        sheet.getRange(row + hists[0], 8).setValue(new Date());
+        sheet.getRange(row + hists[0], 9).setValue(s);
+        sheet.getRange(row + hists[0], 10).setValue(numbers[92]);
+        sheet.getRange(row + hists[0], 11).setValue(rec);
+        sheet.getRange(row + hists[0], 12).setValue("'" + getTextFromNumbers(numbers, false, safetyGap, mmDD));
+        
+        gm[i].forward(toV, { cc: ccV, bcc: bccV, subject: numbers[92] });
+        gm[i].moveToTrash();
+      }
+    }
+  }
+  
+  if (noOffset > 0 && noOffset < maxHist)
+  {
+    var hists = searchHistLocation(sheet, maxHist);
+    
+    for (var j = 1; noOffset + j < maxHist; j++)
+    {
+      var k = (hists[0] + j) % maxHist;
+      var text = sheet.getRange(row + k, 7).getValue() + "";
+      
+      if (text.length > 0 && text.substr(0, 1) != "-")
+      {
+        var prevHT = sheet.getRange(row + k, 7).getValue();
+        var newHT = "-" + text;
+
+        if (prevHT != newHT)
+        {
+          updateLastUpdate = true;
+          sheet.getRange(row + k, 7).setValue(newHT);
+        }
+      }
+    }
+  }
+
+  var remainder = row + gm.length;
+  
+  while (sheet.getRange(remainder, 1).getValue() != "")
+  {
+    updateLastUpdate = true;
+    sheet.getRange(remainder, 1).setValue("");  
+    sheet.getRange(remainder, 2).setValue("");  
+    sheet.getRange(remainder, 3).setValue("");  
+    sheet.getRange(remainder, 4).setValue("");  
+    sheet.getRange(remainder, 5).setValue("");  
+    remainder++;
+  }
+
+  if (updateLastUpdate)
+    sheet.getRange(1, 5).setValue(curUpdate);
+}
+
+function checkTestSubjects(sheetName)
+{
+  if (arguments.length < 1)
+    sheetName = "Auto Email";
+
+  var row = 11;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  
+  var curUpdate = new Date();
+  var lastUpdate = new Date(sheet.getRange(1, 15).getValue());
+  var diff = curUpdate.getTime() - lastUpdate.getTime();
+  var sheetUpdateTime = getParameterSheetUpdate(sheetName);
+  var subjectB = getParameterSubjectB(sheetName);
+  var subjectE = getParameterSubjectE(sheetName);
+  var safetyGap = getParameterSafetyGap(sheetName);
+  var mmDD = getParameterMMDD(sheetName);
+  var updateLastUpdate = false;
+  
+  if (diff > sheetUpdateTime * 1000)
+  {
+    updateLastUpdate = true;
+  }
+  
+  var active = getParameterActive(sheetName);
+  
+  if (!active)
+    return;
+  
+  var defTime = getParameterDefTime(sheetName);
+  var y = 0;
+  var dt = new Date();
+
+  while (true)
+  {
+    var s = sheet.getRange(row + y, 14).getValue();
+    
+    //sheet.getRange(row + y, 15).setValue("...");
+    //sheet.getRange(row + y, 16).setValue("...");
+    
+    if (s == "")
+      break;
+    
+    var numbers = parseTextDateTimeParm(s, dt, defTime, subjectB, subjectE, mmDD);
+    
+    if (numbers == null)
+    {
+      if (sheet.getRange(row + y, 15).getValue() != "-")
+      {
+        updateLastUpdate = true;
+        sheet.getRange(row + y, 15).setValue("-");
+      }
+      
+      if (sheet.getRange(row + y, 16).getValue() != "-")
+      {
+        updateLastUpdate = true;
+        sheet.getRange(row + y, 16).setValue("-");
+      }
+    }
+    else
+    {
+      if (sheet.getRange(row + y, 15).getValue() != numbers[92])
+      {
+        updateLastUpdate = true;
+        sheet.getRange(row + y, 15).setValue(numbers[92]);
+      }
+      
+      var newHT = "'" + getTextFromNumbers(numbers, true, safetyGap, mmDD);
+      
+      if (sheet.getRange(row + y, 16).getValue() != newHT)
+      {
+        updateLastUpdate = true;
+        sheet.getRange(row + y, 16).setValue(newHT);
+      }
+    }
+    
+    y++;
+  }
+
+  if (updateLastUpdate)
+    sheet.getRange(1, 15).setValue(curUpdate);
+}
+
+function prepareSheet(sheetName, mmDD)
+{
+  if (arguments.length < 1)
+    sheetName = "Auto Email";
+  
+  if (arguments.length < 1)
+    mmDD = false;
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  
+  if (sheet == null)
+  {
+    sheet = SpreadsheetApp.getActiveSheet();
+    
+    if (sheet != null && sheet.getName() == "Sheet1" && sheet.getRange(1, 1).getValue() == "")
+    {
+      sheet.setName(sheetName);
+    }
+    else
+    {
+      sheet = ss.insertSheet(sheetName);
+    }
+  }
+
+  sheet.getRange(1, 1).setValue("Default time").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(2, 1).setValue("Max history").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(3, 1).setValue("Active").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(4, 1).setValue("Sheet update").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(5, 1).setValue("Subject begin").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(6, 1).setValue("Subject end").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(7, 1).setValue("Delivery safety gap").setBackgroundRGB(239, 239, 239);  
+  sheet.getRange(8, 1).setValue("Switch to MM/DD").setBackgroundRGB(239, 239, 239);  
+
+  sheet.getRange(1, 2).setValue("'10:00").setBackgroundRGB(32, 243, 51).setNote("This must be a text format. Default: '10:00");
+  sheet.getRange(2, 2).setValue("10").setBackgroundRGB(32, 243, 51);
+  sheet.getRange(3, 2).setValue("Yes").setBackgroundRGB(32, 243, 51).setNote("Put 'Yes' for active.");
+  sheet.getRange(4, 2).setValue("'12:00").setBackgroundRGB(32, 243, 51).setNote("This must be a text format. Default: '12:00");
+  sheet.getRange(5, 2).setValue("([{").setBackgroundRGB(32, 243, 51);
+  sheet.getRange(6, 2).setValue(")]}").setBackgroundRGB(32, 243, 51);
+  sheet.getRange(7, 2).setValue("'00:05").setBackgroundRGB(32, 243, 51).setNote("This must be a text format. Default: '00:05");
+  sheet.getRange(8, 2).setValue(mmDD ? "Yes" : "No").setBackgroundRGB(32, 243, 51).setNote("Put 'Yes' for switching.");
+
+  sheet.getRange(1, 4).setValue("Last check").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(1, 5).setNumberFormat(mmDD ? "mm/d/yyyy h:mm:ss" : "d/mm/yyyy h:mm:ss");
+  
+  sheet.getRange(10, 1).setValue("Date").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(10, 2).setValue("Subject").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(10, 3).setValue("New Subject").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(10, 4).setValue("Recipients").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(10, 5).setValue("Scheduled Delivery").setBackgroundRGB(239, 239, 239);
+  
+  sheet.getRange(10, 7).setValue("No").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(10, 8).setValue("History").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(10, 9).setValue("Subject").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(10, 10).setValue("New Subject").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(10, 11).setValue("Recipients").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(10, 12).setValue("Scheduled Delivery").setBackgroundRGB(239, 239, 239);
+  
+  sheet.getRange(1, 14).setValue("Last check").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(1, 15).setNumberFormat(mmDD ? "mm/d/yyyy h:mm:ss" : "d/mm/yyyy h:mm:ss");
+  
+  sheet.getRange(10, 14).setValue("Test Subject").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(10, 15).setValue("New Subject").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(10, 16).setValue("Scheduled Delivery").setBackgroundRGB(239, 239, 239);
+  
+  sheet.getRange(11, 14).setValue("Happy New Year! (1/1 0:0)");
+  sheet.getRange(12, 14).setValue("Summary (24)");
+  sheet.getRange(13, 14).setValue("End of Year Event (24/12)");
+  sheet.getRange(14, 14).setValue("Night Message (20:00)");
+  sheet.getRange(15, 14).setValue("Later Message (+1:30)");
+  sheet.getRange(16, 14).setValue("Simple Message (25@11pm)");
+  sheet.getRange(17, 14).setValue("Test [15)");
+  sheet.getRange(18, 14).setValue("Feb or Jan (1/2)");
+  
+  sheet.setColumnWidth(1, 150);
+  sheet.setColumnWidth(5, 150);
+  sheet.setColumnWidth(7, 40);
+  sheet.setColumnWidth(8, 150);
+  sheet.setColumnWidth(12, 150);
+  sheet.setColumnWidth(14, 200);
+  sheet.setColumnWidth(15, 200);
+  sheet.setColumnWidth(16, 200);
+  //sheet.getRange("A:A").setHorizontalAlignment("Right");
+  sheet.getRange("E:E").setHorizontalAlignment("Right");
+  sheet.getRange("L:L").setHorizontalAlignment("Right");
+  sheet.getRange("P:P").setHorizontalAlignment("Right");
+  sheet.hideRows(2);
+  sheet.hideRows(4, 5);
+}
+
+function runPrepareSheet()
+{
+  prepareSheet("Auto Email", false);
+}
+
+function loopCheckingDraftMessages()
+{
+  checkDraftMessages("Auto Email");
+}
+
+function loopCheckingTestSubjects()
+{
+  checkTestSubjects("Auto Email");
+}
+
+// GmailAutoSend - by Sonny (c) 2014
