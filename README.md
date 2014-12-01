@@ -18,8 +18,9 @@ Steps to Use
   - <i>loopCheckingTestSubjects</i>
 5. Run <i>runPrepareSheet</i> function and allow script to access your <b>Gmail</b> accounts
 6. <b>Optional:</b> Go to the sheet and change the paramter cells with green background, unhide rows 1-8 for showing advanced parameters
-7. At script editor, click the <b>"Current script's trigger"</b> and set up method below with every 30 minutes or even every minute recurrence
-  - <i>loopCheckingDraftMessages</i>
+7. At script editor, click the <b>"Current script's trigger"</b> and set up method below with every 30 minutes or even every minute recurrence. This is the periodic check in <b>Draft</b> and send when it needs to be sent (not the actual delivery time).
+  - <i>loopCheckingDraftMessages</i><br>
+<b>Note:</b> This will read all your <b>Draft</b> messages in <b>Gmail</b> which will be sent if their subject is having same schedule pattern (parenthesis and numbers). It's recommended to archive/delete all your draft messages nor related to the schedule before switching this trigger on.<br>
 8. <b>Optional:</b> Add some subject tests to see their resulting delivery date/time and run function below.
   - <i>loopCheckingTestSubjects</i>
 9. Go to <b>Gmail</b> and make a draft message with schedule inside brackets, it will be sent automatically and history will be kept in the sheet and in <b>Trash</b> at <b>Gmail</b><br>
