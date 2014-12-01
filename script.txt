@@ -1,4 +1,4 @@
-// GmailAutoSend - by Sonny (c) 2014
+// GmailAutoSend - by SonnyWin (c) 2014
 
 // Steps to use:
 // 1. Make new or use existing Google Sheet
@@ -10,8 +10,9 @@
 //    - loopCheckingTestSubjects
 // 5. Run runPrepareSheet function and allow script to access your Gmail accounts
 // 6. Optional: Go to the sheet and change the paramter cells with green background, unhide rows 1-8 for showing advanced parameters
-// 7. At script editor, click the "Current script's trigger" and set up method below with every 30 minutes or even every minute recurrence
+// 7. At script editor, click the "Current script's trigger" and set up method below with every 30 minutes or even every minute recurrence. This is the periodic check in Draft and send when it needs to be sent (not the actual delivery time).
 //    - loopCheckingDraftMessages
+// Note: This will read all your Draft messages in Gmail which will be sent if their subject is having same schedule pattern (parenthesis and numbers). It's recommended to archive/delete all your draft messages nor related to the schedule before switching this trigger on.
 // 8. Optional: Add some subject tests to see their resulting delivery date/time and run function below.
 //    - loopCheckingTestSubjects
 // 9. Go to Gmail and make a draft message with schedule inside brackets, it will be sent automatically and history will be kept in Sheet and in Trash at Gmail
@@ -1532,4 +1533,4 @@ function loopCheckingTestSubjects()
   checkTestSubjects("Auto Email");
 }
 
-// GmailAutoSend - by Sonny (c) 2014
+// GmailAutoSend - by SonnyWin (c) 2014
