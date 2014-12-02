@@ -12,19 +12,38 @@ Steps to Use
 1. Make new or use existing <b>Google Sheets</b>
 2. Go to <b>Tools</b> | <b>Script editor...</b>
 3. Paste the text from <b>script.txt</b> into the editor
-4. <b>Optional:</b> Modify three functions below at bottom part for the sheet name (default: <i>"Auto Email"</i>), change second parameter into true at <i>runPrepareSheet</i> for <b>mm/dd/yyyy</b> date format.
+4. <b>Optional:</b> Modify the name of the sheet at three functions below (default is <i>"Auto Email"</i>). The new sheet will be used to store parameters, histories and tests.
   - <i>runPrepareSheet</i>
   - <i>loopCheckingDraftMessages</i>
-  - <i>loopCheckingTestSubjects</i>
-5. Run <i>runPrepareSheet</i> function and allow script to access your <b>Gmail</b> accounts
-6. <b>Optional:</b> Go to the sheet and change the paramter cells with green background, unhide rows 1-8 for showing advanced parameters
-7. At script editor, click the <b>"Current script's trigger"</b> and set up method below with every 30 minutes or even every minute recurrence. This is the periodic check in <b>Draft</b> and send when it needs to be sent (not the actual delivery time).
-  - <i>loopCheckingDraftMessages</i><br>
-<b>Note:</b> This will read all your <b>Draft</b> messages in <b>Gmail</b> which will be sent if their subject is having same schedule pattern (parenthesis and numbers). It's recommended to archive/delete all your draft messages nor related to the schedule before switching this trigger on.<br>
-8. <b>Optional:</b> Add some subject tests to see their resulting delivery date/time and run function below.
-  - <i>loopCheckingTestSubjects</i>
+  - <i>loopCheckingTestSubjects</i><br>
+  <b>Note:</b> If you need to change date format into <b>mm/dd/yyyy</b>, change second parameter of <i>runPrepareSheet</i> into <b>true</b>.
+    <i>prepareSheet("Auto Email", <b>true</b>);</i>
+5. Run <i>installGmailAutoSend</i> function and allow script to access your <b>Gmail</b> account
+    <b>Note:</b> Once installation is done, it will start checking all of your <b>Draft</b> messages in <b>Gmail</b> which will be sent when their subject is having same schedule pattern (numbers in brackets).
+    It's recommended to archive/delete all your draft messages nor deleted before doing this task (unless you intend to send them using this script).
+6. <b>Optional:</b> Add some subject tests to see their resulting delivery date/time and run <b>"Calculate test subjects"</b> under <b>"GmailAutoSend"</b> menu.
 9. Go to <b>Gmail</b> and make a draft message with schedule inside brackets, it will be sent automatically and history will be kept in the sheet and in <b>Trash</b> at <b>Gmail</b><br>
    <b>Ex.:</b> Subject is <i>"Test draft which will be sent automatically in 5 minutes (+0:5)"</i>
+
+GmailAutoSend Menu Explanations
+===============================
+<b>Calculate test subjects:</b> This will calculate the scheduled delivery from the test subjects at column <b>N</b>.<br>
+<b>Re-install:</b> This will create the sheet if not yet existed, write default values for formattings to the sheet and set up menu and triggers when they are not exist.<br>
+<b>E-mail me:</b> This will open a window with a link to make <b>Gmail</b> empty message into myself (<u>sonny.power.win@gmail.com</u>)<br>
+<b>Open Github:</b> This will open a window with a link to go to <b>GitHub</b> page of this project (https://github.com/SonnyWin/GmailAutoSend).<br>
+
+Parameters Explanations
+=======================
+Parameters are put in second column of rows <b>1</b>-<b>8</b>. Some were hidden and need to unhide for changing/viewing them.<br>
+<b>Default time:</b> When the schedule is not specifying the time, this default time is used. This parameter needs to be written in text. Default: '10:00<br>
+<b>Max history:</b> This is the number of rows when storing sent messages in <b>History</b> section at column <b>G</b>-<b>L</b>. When it's reaching the end of rows, it goes back up again. Default: 10<br>
+<b>Active:</b> This is the indicator whether the auto sending is activated or not. To deactivate, put different text other than <b>"Yes"</b>. Default: Yes<br>
+<b>Sheet update:</b> This is the maximum duration of scipt not updating the sheet when there is no necessary update. This parameter needs to be written in text. Default: '12:00<br>
+<b>Subject begin:</b> This is a collection of characters which will be identified as the starting character of schedule. Default: ([{<br>
+<b>Subject end:</b> This is a collection of characters which will be identified as the ending character of schedule. The start and end may not be in normal pair of brackets (or character), i.e.: <b>[</b> and <b>)</b> is acceptable. Default: )]}<br>
+<b>Delivery safety gap:</b> This is the duration of locked draft since saved. When draft message is still open and typed at <b>Google</b>, it's actually saved and may be sent before draft is finished. This safety delay locking will prevent the sending until that duration is reached. This parameter needs to be written in text. Default: '00:05<br>
+<b>Switch to MM/DD:</b> This is parameter to change the parser algorithm to become <b>mm/dd/yyyy</b> instead of <b>dd/mm/yyyy</b>. Default: No<br>
+
 
 Format
 ======
