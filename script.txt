@@ -4,24 +4,41 @@
 // 1. Make new or use existing Google Sheet
 // 2. Go to Tools | Script editor...
 // 3. Paste all this script into the editor
-// 4. Optional: Modify three functions below at bottom part for the sheet name (default: "Auto Email"), change second parameter of runPrepareSheet for mm/dd/yyyy date format.
+// 4. Optional: Modify the name of the sheet at three functions below (default is "Auto Email"). The new sheet will be used to store parameters, histories and tests.
 //    - runPrepareSheet
 //    - loopCheckingDraftMessages
 //    - loopCheckingTestSubjects
-// 5. Run runPrepareSheet function and allow script to access your Gmail accounts
-// 6. Optional: Go to the sheet and change the paramter cells with green background, unhide rows 1-8 for showing advanced parameters
-// 7. At script editor, click the "Current script's trigger" and set up method below with every 30 minutes or even every minute recurrence. This is the periodic check in Draft and send when it needs to be sent (not the actual delivery time).
-//    - loopCheckingDraftMessages
-// Note: This will read all your Draft messages in Gmail which will be sent if their subject is having same schedule pattern (parenthesis and numbers). It's recommended to archive/delete all your draft messages nor related to the schedule before switching this trigger on.
-// 8. Optional: Add some subject tests to see their resulting delivery date/time and run function below.
-//    - loopCheckingTestSubjects
-// 9. Go to Gmail and make a draft message with schedule inside brackets, it will be sent automatically and history will be kept in Sheet and in Trash at Gmail
+//    Note: If you need to change date format into mm/dd/yyyy, change second parameter of runPrepareSheet into true.
+//      prepareSheet("Auto Email", true);
+// 5. Run installGmailAutoSend function and allow script to access your Gmail account
+//    Note: Once installation is done, it will start checking all of your Draft messages in Gmail which will be sent when their subject is having same schedule pattern (numbers in brackets).
+//          It's recommended to archive/delete all your draft messages nor deleted before  doing this task (unless you intend to send them using this script).
+// 6. Optional: Add some subject tests to see their resulting delivery date/time and run "Calculate test subjects" under "GmailAutoSend" menu.
+//    Ex.: Subject is "Test draft which will be sent automatically in 5 minutes (+0:5)"
+// 7. Go to Gmail and make a draft message with schedule inside brackets, it will be sent automatically and history will be kept in the sheet and in Trash at Gmail
+
+// GmailAutoSend menu explanations
+// Calculate test subjects: This will calculate the scheduled delivery from the test subjects at column N.
+// Re-install: This will create the sheet if not yet existed, write default values for formattings to the sheet and set up menu and triggers when they are not exist.
+// E-mail me: This will open a window with a link to make Gmail empty message into myself (sonny.power.win@gmail.com)
+// Open Github: This will open a window with a link to go to Github page of this project (https://github.com/SonnyWin/GmailAutoSend).
+
+// Parameters explanations
+// Parameters are put in second column of rows 1-8. Some were hidden and need to unhide for changing/viewing them.
+// Default time: When the schedule is not specifying the time, this default time is used. This parameter needs to be written in text. Default: '10:00
+// Max history: This is the number of rows when storing sent messages in History section at column G-L. When it's reaching the end of rows, it goes back up again. Default: 10
+// Active: This is the indicator whether the auto sending is activated or not. To deactivate, put different text other than "Yes". Default: Yes
+// Sheet update: This is the maximum duration of scipt not updating the sheet when there is no necessary update. This parameter needs to be written in text. Default: '12:00
+// Subject begin: This is a collection of characters which will be identified as the starting character of schedule. Default: ([{
+// Subject end: This is a collection of characters which will be identified as the ending character of schedule. The start and end may not be in normal pair of brackets (or character), i.e.: [ and ) is acceptable. Default: )]}
+// Delivery safety gap: This is the duration of locked draft since saved. When draft message is still open and typed at Google, it's actually saved and may be sent before draft is finished. This safety delay locking will prevent the sending until that duration is reached. This parameter needs to be written in text. Default: '00:05
+// Switch to MM/DD: This is parameter to change the parser algorithm to become mm/dd/yyyy instead of dd/mm/yyyy. Default: No
 
 // Schedule format in subject is below.
 //   Schedule: ( Date | Date Time | Time Date | Time)
 //   Date: Number [ / Number [ / Number ] ]
 //   Time: [ @ | + ] Number [ : Number [ : Number ] ] [ AM | PM ]
-// Date is in dd/mm/yyyy format by default.
+// Date is in dd/mm/yyyy format by default. To change into mm/dd/yyyy, change second parameter into true at runPrepareSheet function and select Re-install (all parameters will be back to default).
 // Examples:
 //    (1/1 0:0)    Send at midnight at 1st Jan
 //    (24)         Send at 24th of the month
@@ -35,6 +52,35 @@
 //    - When date/time has past and already more than 1 day (except diff. month) or 1 hour behind, then day/month will be added by 1.
 //    - There is a safety check which will not send draft message within 5 minutes even the scheduled date/time is below 5 minutes. This is due to the nature to write subject before body and unfinished draft will still be read by this script. 
 // Make experiment at column N under "Test Subject"
+
+function installGmailAutoSend()
+{
+  runPrepareSheet();
+  initTriggers();
+  initMenu();
+  
+  SpreadsheetApp.getActiveSpreadsheet().toast("GmailAutoSend installation is successful!");
+}
+
+function runPrepareSheet()
+{
+  prepareSheet("Auto Email", false);
+}
+
+function loopCheckingDraftMessages()
+{
+  checkDraftMessages("Auto Email");
+}
+
+function loopCheckingTestSubjects()
+{
+  checkTestSubjects("Auto Email");
+}
+
+function onOpen()
+{
+  initMenu();  
+}
 
 function getParameterDefTime(sheetName)
 {
@@ -1480,7 +1526,7 @@ function prepareSheet(sheetName, mmDD)
   sheet.getRange(10, 5).setValue("Scheduled Delivery").setBackgroundRGB(239, 239, 239);
   
   sheet.getRange(10, 7).setValue("No").setBackgroundRGB(239, 239, 239);
-  sheet.getRange(10, 8).setValue("History").setBackgroundRGB(239, 239, 239);
+  sheet.getRange(10, 8).setValue("History (actual sent)").setBackgroundRGB(239, 239, 239);
   sheet.getRange(10, 9).setValue("Subject").setBackgroundRGB(239, 239, 239);
   sheet.getRange(10, 10).setValue("New Subject").setBackgroundRGB(239, 239, 239);
   sheet.getRange(10, 11).setValue("Recipients").setBackgroundRGB(239, 239, 239);
@@ -1488,6 +1534,7 @@ function prepareSheet(sheetName, mmDD)
   
   sheet.getRange(1, 14).setValue("Last check").setBackgroundRGB(239, 239, 239);
   sheet.getRange(1, 15).setNumberFormat(mmDD ? "mm/d/yyyy h:mm:ss" : "d/mm/yyyy h:mm:ss");
+  sheet.getRange("H:H").setNumberFormat(mmDD ? "mm/d/yyyy h:mm:ss" : "d/mm/yyyy h:mm:ss");
   
   sheet.getRange(10, 14).setValue("Test Subject").setBackgroundRGB(239, 239, 239);
   sheet.getRange(10, 15).setValue("New Subject").setBackgroundRGB(239, 239, 239);
@@ -1518,19 +1565,69 @@ function prepareSheet(sheetName, mmDD)
   sheet.hideRows(4, 5);
 }
 
-function runPrepareSheet()
+function initTriggers()
 {
-  prepareSheet("Auto Email", false);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var findOnOpen = false;
+  var findLoopDraft = false;
+  var triggers = ScriptApp.getProjectTriggers();
+  
+  for (var i = 0; i < triggers.length; i++)
+  {
+    var t = triggers[i];
+    switch (t.getHandlerFunction())
+    {
+      case "onOpen":
+        findOnOpen = true;
+        break;
+
+      case "loopCheckingDraftMessages":
+        findLoopDraft = true;
+        break;
+    }
+  }
+  
+  if (!findOnOpen)
+  {
+    ScriptApp.newTrigger("onOpen").forSpreadsheet(ss).onOpen().create();
+  }
+  
+  if (!findLoopDraft)
+  {
+    ScriptApp.newTrigger("loopCheckingDraftMessages").timeBased().everyMinutes(1).create();
+  }
 }
 
-function loopCheckingDraftMessages()
+function showURL(href)
 {
-  checkDraftMessages("Auto Email");
+  var app = UiApp.createApplication().setHeight(50).setWidth(200);
+  app.setTitle("Show URL");
+  var link = app.createAnchor('open ', href).setId("link");
+  app.add(link);  
+  var doc = SpreadsheetApp.getActive();
+  doc.show(app);
 }
 
-function loopCheckingTestSubjects()
+function showURLGit()
 {
-  checkTestSubjects("Auto Email");
+  showURL("https://github.com/SonnyWin/GmailAutoSend");
 }
 
+function showURLEmail()
+{
+  showURL("https://mail.google.com/mail/?view=cm&fs=1&to=sonny.power.win@gmail.com&su=GmailAutoSend");
+}
+
+function initMenu()
+{
+  var ui = SpreadsheetApp.getUi();
+  
+  ui.createMenu("GmailAutoSend")
+    .addItem("Calculate test subjects", "loopCheckingTestSubjects")
+    .addItem("Re-install", "installGmailAutoSend")
+    .addSeparator()
+    .addItem("E-mail me: sonny.power.win@gmail.com", "showURLEmail")
+    .addItem("Open Github/GmailAutoSend", "showURLGit").addToUi();
+}
+    
 // GmailAutoSend - by SonnyWin (c) 2014
