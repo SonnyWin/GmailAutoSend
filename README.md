@@ -51,7 +51,7 @@ Format
  <b>Date:</b> <i>Number [ / Number [ / Number ] ]</i><br>
  <b>Time:</b> <i>[ @ | + ] Number [ : Number [ : Number ] ] [ AM | PM ]</i><br>
 
-Date is in <b>dd/mm/yyyy</b> format by default.
+Date is in <b>dd/mm/yyyy</b> format by default. To change into <b>mm/dd/yyyy</b>, change second parameter into <b>true</b> at <i>runPrepareSheet</i> function and select <b>Re-install</b> (all parameters will be back to default).
 
 Examples
 ========
